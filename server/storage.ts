@@ -1,6 +1,6 @@
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import {
   managers, rosters, playerTotals, events, eventResults, majorPayouts, playerAliases, leagueRules,
@@ -8,7 +8,7 @@ import {
   type MajorPayout, type PlayerAlias, type LeagueRules,
   type InsertManager, type InsertRoster, type InsertPlayerTotals, type InsertEvent,
   type InsertEventResult, type InsertMajorPayout, type InsertPlayerAlias, type InsertLeagueRules,
-} from "@shared/schema";
+} from "../shared/schema";
 
 // Use Turso in production, local SQLite file in development
 const client = createClient(
