@@ -57,6 +57,22 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  // Build self-contained Vercel serverless function (no externals — everything bundled)
+  console.log("building serverless function...");
+  await esbuild({
+    entryPoints: ["api/_handler.ts"],
+    platform: "node",
+    bundle: true,
+    format: "esm",
+    outfile: "api/index.mjs",
+    define: {
+      "process.env.NODE_ENV": '"production"',
+      "process.env.VERCEL": '"1"',
+    },
+    minify: true,
+    logLevel: "info",
+  });
 }
 
 buildAll().catch((err) => {
