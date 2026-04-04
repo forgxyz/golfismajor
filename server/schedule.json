@@ -1,0 +1,49 @@
+[
+  {
+    "name": "Sony Open in Hawaii",
+    "startDate": "2026-01-16",
+    "endDate": "2026-01-18",
+    "isMajor": false,
+    "idEvents": [
+      "2328861",
+      "2408866",
+      "2408867",
+      "2408868"
+    ]
+  },
+  {
+    "name": "The American Express",
+    "startDate": "2026-01-22",
+    "endDate": "2026-01-25",
+    "isMajor": false,
+    "idEvents": [
+      "2328863",
+      "2408875",
+      "2408876",
+      "2408877"
+    ]
+  },
+  {
+    "name": "Farmers Insurance Open",
+    "startDate": "2026-01-29",
+    "endDate": "2026-02-01",
+    "isMajor": false,
+    "idEvents": [
+      "2328864",
+      "2408880",
+      "2408881",
+      "2408882"
+    ]
+  },
+  {
+    "name": "WM Phoenix Open",
+    "startDate": "2026-02-05",
+    "endDate": "2026-02-07",
+    "isMajor": false,
+    "idEvents": [
+      "2328865",
+      "2428964",
+      "2428965"
+    ]
+  }
+]
