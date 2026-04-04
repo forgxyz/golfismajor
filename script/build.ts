@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, mkdir, writeFile, cp } from "fs/promises";
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -32,6 +32,7 @@ const allowlist = [
 
 async function buildAll() {
   await rm("dist", { recursive: true, force: true });
+  await rm(".vercel/output", { recursive: true, force: true });
 
   console.log("building client...");
   await viteBuild();
@@ -58,14 +59,27 @@ async function buildAll() {
     logLevel: "info",
   });
 
-  // Build self-contained Vercel serverless function (no externals — everything bundled)
-  console.log("building serverless function...");
+  // ── Vercel Build Output API v3 ──────────────────────────────
+  console.log("building Vercel output...");
+
+  // Static files (Vite client build)
+  await mkdir(".vercel/output/static", { recursive: true });
+  await cp("dist/public", ".vercel/output/static", { recursive: true });
+
+  // Serverless function — self-contained ESM bundle
+  const funcDir = ".vercel/output/functions/api.func";
+  await mkdir(funcDir, { recursive: true });
+
   await esbuild({
     entryPoints: ["api/_handler.ts"],
     platform: "node",
     bundle: true,
     format: "esm",
-    outfile: "api/index.mjs",
+    outfile: `${funcDir}/index.mjs`,
+    alias: {
+      // Use the HTTP-only client for serverless (no native deps needed)
+      "@libsql/client": "@libsql/client/web",
+    },
     define: {
       "process.env.NODE_ENV": '"production"',
       "process.env.VERCEL": '"1"',
@@ -73,6 +87,35 @@ async function buildAll() {
     minify: true,
     logLevel: "info",
   });
+
+  await writeFile(
+    `${funcDir}/.vc-config.json`,
+    JSON.stringify(
+      { runtime: "nodejs20.x", handler: "index.mjs", launcherType: "Nodejs" },
+      null,
+      2,
+    ),
+  );
+
+  // Route config
+  await writeFile(
+    ".vercel/output/config.json",
+    JSON.stringify(
+      {
+        version: 3,
+        routes: [
+          { handle: "filesystem" },
+          { src: "/api/.*", dest: "/api" },
+          { src: "/.*", dest: "/index.html" },
+        ],
+        crons: [{ path: "/api/cron/weekly", schedule: "0 12 * * 1" }],
+      },
+      null,
+      2,
+    ),
+  );
+
+  console.log("Vercel output ready at .vercel/output/");
 }
 
 buildAll().catch((err) => {

@@ -1,6 +1,5 @@
 node_modules
 dist
-api/index.mjs
 .DS_Store
 server/public
 vite.config.ts.*
@@ -11,3 +10,4 @@ vite.config.ts.*
 golf-league.db
 *.db
 .env
+.vercel
