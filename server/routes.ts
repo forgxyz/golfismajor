@@ -6,9 +6,13 @@ import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, loadInitialFed
 import { seedIfNeeded } from "./seed";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
-  // Boot: init DB tables, seed, load FedEx snapshot
+  // Boot: init DB tables, seed, then load live FedEx standings (fall back to hardcoded snapshot)
   await seedIfNeeded();
-  await loadInitialFedexStandings();
+  const liveStandings = await fetchFedexStandings();
+  if (!liveStandings.ok) {
+    console.log("[boot] Live FedEx standings unavailable, using hardcoded snapshot");
+    await loadInitialFedexStandings();
+  }
 
   // ── Standings ──────────────────────────────────────────────
   app.get("/api/standings", async (_req, res) => {
