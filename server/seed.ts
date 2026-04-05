@@ -7,10 +7,10 @@ import { storage } from "./storage";
 const ROSTER_DATA = [
   { id: "jack", name: "Jack Forgash", players: ["Akshay Bhatia", "Collin Morikawa", "Justin Thomas", "Jon Rahm", "Viktor Hovland"] },
   { id: "michael", name: "Michael Nolan", players: ["Maverick McNealy", "Daniel Berger", "Shane Lowry", "Corey Conners", "Scottie Scheffler"] },
-  { id: "matthew", name: "Matthew Donnelly", players: ["Robert MacIntyre", "Justin Rose", "J.J. Spaun", "Tommy Fleetwood", "Xander Schauffele"] },
+  { id: "matthew", name: "Matt Donnelly", players: ["Robert MacIntyre", "Justin Rose", "J.J. Spaun", "Tommy Fleetwood", "Xander Schauffele"] },
   { id: "sean", name: "Sean Maguire", players: ["Sam Burns", "Brian Harman", "Tyrrell Hatton", "Bryson DeChambeau", "Chris Gotterup"] },
   { id: "ben", name: "Ben Newman", players: ["Hideki Matsuyama", "Min Woo Lee", "Jacob Bridgeman", "Jake Knapp", "Ludvig Åberg"] },
-  { id: "peter", name: "Peter Rustowicz", players: ["Sepp Straka", "Rory McIlroy", "Matt Fitzpatrick", "Ben Griffin", "Cameron Young"] },
+  { id: "peter", name: "Pete Rustowicz", players: ["Sepp Straka", "Rory McIlroy", "Matt Fitzpatrick", "Ben Griffin", "Cameron Young"] },
 ];
 
 const ALIAS_DATA = [

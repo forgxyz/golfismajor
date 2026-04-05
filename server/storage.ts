@@ -32,6 +32,10 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS league_rules (key TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT);
   `);
 
+  // Name fixes
+  await client.execute(`UPDATE managers SET name = 'Matt Donnelly' WHERE id = 'matthew'`);
+  await client.execute(`UPDATE managers SET name = 'Pete Rustowicz' WHERE id = 'peter'`);
+
   // Dedup roster and major_payout entries (fixes existing data from race-condition double-seeds)
   await client.execute(
     `DELETE FROM rosters WHERE id NOT IN (SELECT MIN(id) FROM rosters GROUP BY manager_id, player_name)`
