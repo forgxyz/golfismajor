@@ -74,8 +74,8 @@ async function buildAll() {
     entryPoints: ["api/_handler.ts"],
     platform: "node",
     bundle: true,
-    format: "esm",
-    outfile: `${funcDir}/index.mjs`,
+    format: "cjs",
+    outfile: `${funcDir}/index.js`,
     alias: {
       // Use the HTTP-only client for serverless (no native deps needed)
       "@libsql/client": "@libsql/client/web",
@@ -91,7 +91,7 @@ async function buildAll() {
   await writeFile(
     `${funcDir}/.vc-config.json`,
     JSON.stringify(
-      { runtime: "nodejs20.x", handler: "index.mjs", launcherType: "Nodejs" },
+      { runtime: "nodejs20.x", handler: "index.js", launcherType: "Nodejs" },
       null,
       2,
     ),
