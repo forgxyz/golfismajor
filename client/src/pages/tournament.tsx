@@ -158,7 +158,7 @@ export default function Tournament() {
 
       {/* Manager roll-up KPI strip */}
       {results.length > 0 && (
-        <div className="kpi-grid">
+        <div className="kpi-grid kpi-grid-3x2">
           {managerRollup.map((m) => (
             <div
               key={m.managerId}
