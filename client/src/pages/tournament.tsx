@@ -93,7 +93,7 @@ export default function Tournament() {
 
   if (isLoading) {
     return (
-      <div className="page-content">
+      <div className="page">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-64" />
           <div className="h-64 bg-gray-200 dark:bg-gray-700 rounded" />
@@ -104,7 +104,7 @@ export default function Tournament() {
 
   if (!data) {
     return (
-      <div className="page-content">
+      <div className="page">
         <div className="empty-state">
           <Flag className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">No active tournament</p>
@@ -131,17 +131,15 @@ export default function Tournament() {
   const rosteredCount = rosteredInEvent.length;
 
   return (
-    <div className="page-content">
+    <div className="page">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-2xl font-bold">{event.name}</h1>
-            {event.isMajor && (
-              <span className="badge badge-major">Major</span>
-            )}
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-1)" }}>
+            <h1 className="page-title">{event.name}</h1>
+            {event.isMajor && <span className="badge badge-major">Major</span>}
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="page-subtitle">
             {event.venue ?? "Venue TBD"}
             {event.startDate && ` · ${new Date(event.startDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
             {" · "}{event.status}
@@ -160,16 +158,16 @@ export default function Tournament() {
 
       {/* Manager roll-up KPI strip */}
       {results.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
-          {managerRollup.map((m, i) => (
+        <div className="kpi-grid">
+          {managerRollup.map((m) => (
             <div
               key={m.managerId}
-              className={`kpi-card p-3 border-l-4 ${MANAGER_COLORS[m.managerId] ?? "border-gray-300"}`}
+              className={`kpi-card border-l-4 ${MANAGER_COLORS[m.managerId] ?? "border-gray-300"}`}
               data-testid={`kpi-manager-${m.managerId}`}
             >
-              <div className="text-xs text-muted-foreground truncate">{m.managerName.split(" ")[0]}</div>
-              <div className="text-lg font-bold">{m.projectedEventPoints.toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground">proj. pts</div>
+              <div className="kpi-label">{m.managerName.split(" ")[0]}</div>
+              <div className="kpi-value">{m.projectedEventPoints.toLocaleString()}</div>
+              <div className="kpi-sub">proj. pts</div>
             </div>
           ))}
         </div>
@@ -186,11 +184,11 @@ export default function Tournament() {
 
       {/* Full leaderboard */}
       {results.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border">
-            <div className="flex items-center gap-3">
-              <h2 className="font-semibold">Live Leaderboard</h2>
-              <span className="text-xs text-muted-foreground">{results.length} players · {rosteredCount} rostered</span>
+        <div className="table-card">
+          <div className="table-card-header">
+            <div className="table-card-title">
+              Live Leaderboard
+              <span className="table-card-meta" style={{ marginLeft: "var(--space-2)" }}>{results.length} players · {rosteredCount} rostered</span>
             </div>
             {/* Color legend */}
             <div className="hidden sm:flex items-center gap-3 flex-wrap justify-end">
@@ -203,14 +201,14 @@ export default function Tournament() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="table-wrap">
+            <table>
               <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-2 w-12">POS</th>
-                  <th className="text-left px-4 py-2">PLAYER</th>
-                  <th className="text-right px-4 py-2 w-16">SCORE</th>
-                  <th className="text-right px-4 py-2 w-24 hidden sm:table-cell">PROJ PTS</th>
+                <tr>
+                  <th>POS</th>
+                  <th>PLAYER</th>
+                  <th style={{ textAlign: "right" }}>SCORE</th>
+                  <th style={{ textAlign: "right" }} className="hidden sm:table-cell">PROJ PTS</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,40 +221,36 @@ export default function Tournament() {
                     <tr
                       key={r.id ?? idx}
                       data-testid={`row-player-${idx}`}
-                      className={`border-b border-border/50 transition-colors ${
-                        isRostered
-                          ? `${MANAGER_COLORS[mid] ?? "bg-gray-50 dark:bg-gray-800"} font-medium`
-                          : "hover:bg-muted/30"
-                      }`}
+                      className={isRostered ? MANAGER_COLORS[mid] ?? "" : ""}
                     >
-                      <td className="px-4 py-2.5 text-muted-foreground font-mono text-xs">{pos}</td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2">
+                      <td style={{ color: "var(--color-text-muted)", fontFamily: "monospace", fontSize: "var(--text-xs)" }}>{pos}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                           {isRostered && (
                             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${MANAGER_DOT[mid] ?? "bg-gray-400"}`} />
                           )}
-                          <span className={isRostered ? "" : "text-muted-foreground"}>{r.playerName || "—"}</span>
+                          <span style={isRostered ? { fontWeight: 600 } : { color: "var(--color-text-muted)" }}>{r.playerName || "—"}</span>
                           {isRostered && r.managerName && (
-                            <span className={`text-xs hidden sm:inline ${MANAGER_TEXT[mid] ?? ""}`}>
+                            <span className={`hidden sm:inline text-xs ${MANAGER_TEXT[mid] ?? ""}`}>
                               {r.managerName.split(" ")[0]}
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono">
-                        <span className={
-                          r.score && r.score.startsWith("-") ? "text-green-600 dark:text-green-400" :
-                          r.score === "E" ? "" :
-                          r.score && r.score !== "0" ? "text-red-500 dark:text-red-400" : "text-muted-foreground"
-                        }>
+                      <td style={{ textAlign: "right", fontFamily: "monospace" }}>
+                        <span style={{
+                          color: r.score && r.score.startsWith("-") ? "var(--color-success)" :
+                                 r.score && r.score !== "E" && r.score !== "0" ? "var(--color-danger, #ef4444)" :
+                                 "var(--color-text-muted)"
+                        }}>
                           {r.score ?? "—"}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-right hidden sm:table-cell">
+                      <td style={{ textAlign: "right" }} className="hidden sm:table-cell">
                         {isRostered && r.effectivePoints > 0 ? (
-                          <span className="text-xs font-semibold text-primary">{r.effectivePoints.toLocaleString()}</span>
+                          <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{r.effectivePoints.toLocaleString()}</span>
                         ) : isRostered ? (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>—</span>
                         ) : null}
                       </td>
                     </tr>
