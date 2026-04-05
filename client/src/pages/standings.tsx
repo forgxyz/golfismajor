@@ -23,26 +23,11 @@ function formatPoints(pts: number) {
   return pts.toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
-interface EventRow {
-  id: string;
-  startDate: string | null;
-  endDate: string | null;
-  status: string | null;
-}
-
 export default function StandingsPage() {
   const { data: standings, isLoading } = useQuery<ManagerStanding[]>({
     queryKey: ["/api/standings"],
     refetchInterval: 60_000,
   });
-
-  const { data: events } = useQuery<EventRow[]>({ queryKey: ["/api/events"] });
-
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const eventsLeft = events?.filter(e =>
-    (e.endDate && e.endDate >= todayStr) ||
-    (!e.endDate && e.startDate && e.startDate >= todayStr)
-  ).length ?? null;
 
   const leader = standings?.[0];
   const secondPlace = standings?.[1];
@@ -78,11 +63,6 @@ export default function StandingsPage() {
             {topPlayer?.name.split(" ").slice(-1)[0] ?? "—"}
           </div>
           <div className="kpi-sub">{formatPoints(topPlayer?.fedexPoints ?? 0)} FedEx pts · {topPlayerManager?.managerName.split(" ")[0]}</div>
-        </div>
-        <div className="kpi-card" data-testid="kpi-events-left">
-          <div className="kpi-label">Events Left</div>
-          <div className="kpi-value">{eventsLeft ?? "—"}</div>
-          <div className="kpi-sub">in the season</div>
         </div>
       </div>
 
