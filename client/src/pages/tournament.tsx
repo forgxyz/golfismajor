@@ -68,11 +68,28 @@ const MANAGER_TEXT: Record<string, string> = {
   peter:   "text-green-700 dark:text-green-300",
 };
 
-function positionLabel(pos: number | null, allResults: EventResult[]): string {
+// Returns { label, tiedMinPos } — detects ties by score, not stored positionNum
+// (handles stale DB data where ESPN stored sequential 3/4/5 instead of T3/T3/T3)
+function tieInfo(score: string | null, allResults: EventResult[]): { isTied: boolean; minPos: number } {
+  if (!score || score === "E" || score === "0") return { isTied: false, minPos: 999 };
+  const group = allResults.filter(r => r.score === score);
+  if (group.length <= 1) return { isTied: false, minPos: group[0]?.positionNum ?? 999 };
+  const minPos = group.reduce((m, r) => Math.min(m, r.positionNum ?? 999), 999);
+  return { isTied: true, minPos };
+}
+
+function positionLabel(pos: number | null, score: string | null, allResults: EventResult[]): string {
   if (!pos) return "—";
-  // Count how many players share the same positionNum
-  const tied = allResults.filter(r => r.positionNum === pos).length;
-  return tied > 1 ? `T${pos}` : String(pos);
+  const { isTied, minPos } = tieInfo(score, allResults);
+  return isTied ? `T${minPos}` : String(pos);
+}
+
+// For tied players, use the top-position's projected points (all tied = same points)
+function effectiveDisplayPoints(r: EventResult, allResults: EventResult[]): number {
+  const { isTied, minPos } = tieInfo(r.score, allResults);
+  if (!isTied) return r.effectivePoints;
+  const minPosResult = allResults.find(x => x.score === r.score && x.positionNum === minPos);
+  return minPosResult?.effectivePoints ?? r.effectivePoints;
 }
 
 export default function Tournament() {
@@ -216,7 +233,8 @@ export default function Tournament() {
               </thead>
               <tbody>
                 {results.map((r, idx) => {
-                  const pos = positionLabel(r.positionNum, results);
+                  const pos = positionLabel(r.positionNum, r.score, results);
+                  const displayPoints = effectiveDisplayPoints(r, results);
                   const isRostered = r.isRostered;
                   const mid = r.managerId ?? "";
 
@@ -250,8 +268,8 @@ export default function Tournament() {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }} className="hidden sm:table-cell">
-                        {isRostered && r.effectivePoints > 0 ? (
-                          <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{r.effectivePoints.toLocaleString()}</span>
+                        {isRostered && displayPoints > 0 ? (
+                          <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{displayPoints.toLocaleString()}</span>
                         ) : isRostered ? (
                           <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>—</span>
                         ) : null}
