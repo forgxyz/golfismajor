@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { computeStandings, pointsForPosition, classifyEvent, isMajor, type EventCategory } from "./scoring";
-import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, loadInitialFedexStandings } from "./pga";
+import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, loadInitialFedexStandings, fetchFedexStandings } from "./pga";
 import { seedIfNeeded } from "./seed";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
@@ -124,6 +124,12 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json(result);
   });
 
+  // ── Refresh FedEx standings ───────────────────────────────
+  app.post("/api/refresh/standings", async (_req, res) => {
+    const result = await fetchFedexStandings();
+    res.json(result);
+  });
+
   // ── Refresh leaderboard ────────────────────────────────────
   app.post("/api/refresh/leaderboard", async (_req, res) => {
     const event = await storage.getCurrentEvent();
@@ -187,16 +193,19 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json(result);
   });
 
-  // ── Weekly cron: auto-detect current tournament ────────────
+  // ── Weekly cron: refresh FedEx standings + auto-detect event
   // Mon 12:00 UTC
   app.get("/api/cron/weekly", async (req, res) => {
     const authHeader = req.headers.authorization;
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
       return res.status(401).json({ error: "Unauthorized" });
     }
-    const result = await autoDetectCurrentEvent();
-    console.log("[cron] Weekly schedule refresh:", result);
-    res.json(result);
+    const [scheduleResult, standingsResult] = await Promise.all([
+      autoDetectCurrentEvent(),
+      fetchFedexStandings(),
+    ]);
+    console.log("[cron] Weekly refresh — schedule:", scheduleResult, "standings:", standingsResult);
+    res.json({ schedule: scheduleResult, standings: standingsResult });
   });
 
   // ── Tournament cron: refresh live leaderboard ───────────────

@@ -9,6 +9,8 @@ import { classifyEvent, isMajor, pointsForPosition, type EventCategory } from ".
 const SPORTSDB_BASE = "https://www.thesportsdb.com/api/v1/json/123";
 const PGA_LEAGUE_ID = "4425";
 const ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard";
+const PGATOUR_GRAPHQL = "https://orchestrator.pgatour.com/graphql";
+const PGATOUR_API_KEY = "da2-gsrx5bibzbb4njvhl7t37wqyl4";
 
 async function sportsdbFetch(endpoint: string) {
   const url = `${SPORTSDB_BASE}${endpoint}`;
@@ -208,6 +210,59 @@ const FEDEX_STANDINGS_2026 = [
   { name: "Tyrrell Hatton", points: 0, rank: 100 },
   { name: "Bryson DeChambeau", points: 0, rank: 100 },
 ];
+
+export async function fetchFedexStandings(): Promise<{ ok: boolean; updated?: number; error?: string }> {
+  try {
+    const res = await fetch(PGATOUR_GRAPHQL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": PGATOUR_API_KEY,
+        "x-pgat-platform": "web",
+      },
+      body: JSON.stringify({
+        operationName: "TourCupSplit",
+        variables: { tourCode: "R", id: "02671", year: new Date().getFullYear() },
+        query: `query TourCupSplit($tourCode: TourCode!, $id: String, $year: Int) {
+          tourCupSplit(tourCode: $tourCode, id: $id, year: $year) {
+            officialPlayers {
+              ... on TourCupCombinedPlayer {
+                id displayName
+                pointData { official }
+                rankingData { official }
+              }
+            }
+          }
+        }`,
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) throw new Error(`PGA Tour API error: ${res.status}`);
+    const data = await res.json();
+    const players: any[] = data?.data?.tourCupSplit?.officialPlayers ?? [];
+    if (!players.length) return { ok: false, error: "No players returned" };
+
+    const now = new Date().toISOString();
+    let updated = 0;
+    for (const p of players) {
+      if (!p?.displayName) continue;
+      const pts = parseFloat(String(p.pointData?.official ?? "0").replace(/,/g, "")) || 0;
+      const rank = parseInt(String(p.rankingData?.official ?? "0").replace(/,/g, "")) || null;
+      // Only update players we have in our roster
+      const existing = await storage.getPlayerTotals(p.displayName);
+      if (existing) {
+        await storage.upsertPlayerTotals({ playerName: p.displayName, fedexPoints: pts, fedexRank: rank, updatedAt: now });
+        updated++;
+      }
+    }
+    console.log(`[pga] FedEx standings updated: ${updated} rostered players`);
+    return { ok: true, updated };
+  } catch (e: any) {
+    console.error("[pga] fetchFedexStandings error:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
 
 export async function loadInitialFedexStandings() {
   const now = new Date().toISOString();
