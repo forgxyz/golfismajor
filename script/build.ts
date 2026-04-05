@@ -108,7 +108,14 @@ async function buildAll() {
           { src: "/api/.*", dest: "/api" },
           { src: "/.*", dest: "/index.html" },
         ],
-        crons: [{ path: "/api/cron/weekly", schedule: "0 12 * * 1" }],
+        crons: [
+          // Mon noon UTC: refresh schedule + auto-detect current event
+          { path: "/api/cron/weekly", schedule: "0 12 * * 1" },
+          // Thu–Sun midnight UTC: leaderboard refresh at start of day
+          { path: "/api/cron/refresh-leaderboard", schedule: "0 0 * * 4,5,6,0" },
+          // Thu–Sun 11:00–23:00 UTC hourly (= 7am–7pm EDT): live updates
+          { path: "/api/cron/refresh-leaderboard", schedule: "0 11-23 * * 4,5,6,0" },
+        ],
       },
       null,
       2,

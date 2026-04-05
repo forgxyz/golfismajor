@@ -188,7 +188,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Weekly cron: auto-detect current tournament ────────────
-  // Called by Vercel cron every Monday at noon UTC (see vercel.json)
+  // Mon 12:00 UTC
   app.get("/api/cron/weekly", async (req, res) => {
     const authHeader = req.headers.authorization;
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -196,6 +196,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     }
     const result = await autoDetectCurrentEvent();
     console.log("[cron] Weekly schedule refresh:", result);
+    res.json(result);
+  });
+
+  // ── Tournament cron: refresh live leaderboard ───────────────
+  // Thu–Sun at 00:00 UTC, then hourly 11:00–23:00 UTC (7am–7pm EDT)
+  app.get("/api/cron/refresh-leaderboard", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const event = await storage.getCurrentEvent();
+    if (!event) {
+      console.log("[cron] Leaderboard refresh skipped: no current event");
+      return res.json({ ok: false, error: "No current event set" });
+    }
+    const result = await fetchLeaderboard(event.id);
+    console.log("[cron] Leaderboard refresh:", result);
     res.json(result);
   });
 }
