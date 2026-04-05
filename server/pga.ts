@@ -130,10 +130,27 @@ export async function fetchLeaderboard(eventId: string) {
     const cat = (event?.categoryOverride ?? event?.eventCategory ?? "full_field") as EventCategory;
     await storage.clearEventResults(eventId);
 
+    // Recalculate tied positions from scores (ESPN c.order is sequential, not tied)
+    const parseScore = (s: string | undefined): number => {
+      if (!s || s === "E") return 0;
+      return parseInt(s) || 0;
+    };
+
+    // Sort by score (ascending = better), then assign tied position numbers
+    const sorted = [...competitors].sort((a, b) => parseScore(a.score) - parseScore(b.score));
+    const tiedPos = new Map<string, number>();
+    let pos = 1;
+    for (let i = 0; i < sorted.length; i++) {
+      if (i > 0 && parseScore(sorted[i].score) !== parseScore(sorted[i - 1].score)) {
+        pos = i + 1;
+      }
+      tiedPos.set(sorted[i].athlete?.displayName ?? "", pos);
+    }
+
     for (const c of competitors) {
       const rawName: string = c.athlete?.displayName ?? "";
       const resolvedName = await storage.resolveAlias(rawName);
-      const position = c.order ?? 999;
+      const position = tiedPos.get(rawName) ?? c.order ?? 999;
       await storage.upsertEventResult({
         eventId,
         playerName: resolvedName,

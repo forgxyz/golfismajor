@@ -165,7 +165,10 @@ export default function Tournament() {
               className={`kpi-card border-l-4 ${MANAGER_COLORS[m.managerId] ?? "border-gray-300"}`}
               data-testid={`kpi-manager-${m.managerId}`}
             >
-              <div className="kpi-label">{m.managerName.split(" ")[0]}</div>
+              <div className="kpi-label" style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${MANAGER_DOT[m.managerId] ?? "bg-gray-400"}`} />
+                {m.managerName.split(" ")[0]}
+              </div>
               <div className="kpi-value">{m.projectedEventPoints.toLocaleString()}</div>
               <div className="kpi-sub">proj. pts</div>
             </div>
