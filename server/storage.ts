@@ -27,14 +27,17 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS player_totals (player_name TEXT PRIMARY KEY, fedex_points REAL NOT NULL DEFAULT 0, fedex_rank INTEGER, updated_at TEXT);
     CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, name TEXT NOT NULL, start_date TEXT, end_date TEXT, venue TEXT, status TEXT, round INTEGER, event_category TEXT NOT NULL DEFAULT 'full_field', is_major INTEGER NOT NULL DEFAULT 0, is_current INTEGER NOT NULL DEFAULT 0, category_override TEXT);
     CREATE TABLE IF NOT EXISTS event_results (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, player_name TEXT NOT NULL, position TEXT, position_num INTEGER, score TEXT, round_score TEXT, status TEXT, projected_points REAL, final_points REAL, points_override REAL);
-    CREATE TABLE IF NOT EXISTS major_payouts (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, event_name TEXT NOT NULL, season INTEGER NOT NULL, winner_name TEXT, manager_id TEXT, payout_amount REAL NOT NULL DEFAULT 250, triggered INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS major_payouts (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, event_name TEXT NOT NULL, season INTEGER NOT NULL, winner_name TEXT, manager_id TEXT, payout_amount REAL NOT NULL DEFAULT 250, triggered INTEGER NOT NULL DEFAULT 0, UNIQUE(event_id, season));
     CREATE TABLE IF NOT EXISTS player_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, api_name TEXT NOT NULL UNIQUE, canonical_name TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS league_rules (key TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT);
   `);
 
-  // Dedup roster entries (fixes existing data from race-condition double-seeds)
+  // Dedup roster and major_payout entries (fixes existing data from race-condition double-seeds)
   await client.execute(
     `DELETE FROM rosters WHERE id NOT IN (SELECT MIN(id) FROM rosters GROUP BY manager_id, player_name)`
+  );
+  await client.execute(
+    `DELETE FROM major_payouts WHERE id NOT IN (SELECT MIN(id) FROM major_payouts GROUP BY event_id, season)`
   );
 }
 

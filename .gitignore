@@ -11,3 +11,5 @@ golf-league.db
 *.db
 .env
 .vercel
+.claude
+.playwright-mcp

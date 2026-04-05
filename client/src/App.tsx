@@ -1,5 +1,4 @@
 import { Switch, Route, Router, Link, useLocation } from "wouter";
-import { useHashLocation } from "wouter/use-hash-location";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
@@ -7,7 +6,7 @@ import StandingsPage from "@/pages/standings";
 import TournamentPage from "@/pages/tournament";
 import MajorsPage from "@/pages/majors";
 import AdminPage from "@/pages/admin";
-import { Flag, Trophy, Star, Settings, Sun, Moon } from "lucide-react";
+import { Flag, Trophy, Star, Sun, Moon } from "lucide-react";
 import { useState, useEffect } from "react";
 
 function NavLink({ href, icon: Icon, label }: { href: string; icon: any; label: string }) {
@@ -56,7 +55,6 @@ function AppShell() {
           <NavLink href="/" icon={Trophy} label="Standings" />
           <NavLink href="/tournament" icon={Flag} label="Tournament" />
           <NavLink href="/majors" icon={Star} label="Majors" />
-          <NavLink href="/admin" icon={Settings} label="Admin" />
         </nav>
         <div className="sidebar-footer">
           <button
@@ -86,7 +84,7 @@ function AppShell() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router hook={useHashLocation}>
+      <Router>
         <AppShell />
       </Router>
       <Toaster />
