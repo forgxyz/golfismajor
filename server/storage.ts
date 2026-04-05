@@ -18,6 +18,7 @@ const client = createClient(
 );
 
 export const db = drizzle(client, { schema });
+export { client };
 
 // Create tables (libSQL batch — runs DDL idempotently)
 export async function initDb() {
@@ -31,6 +32,14 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS player_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, api_name TEXT NOT NULL UNIQUE, canonical_name TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS league_rules (key TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT);
   `);
+
+  // Add columns to events if missing (idempotent)
+  try {
+    await client.execute(`ALTER TABLE events ADD COLUMN points_finalized INTEGER NOT NULL DEFAULT 0`);
+  } catch { /* column already exists */ }
+  try {
+    await client.execute(`ALTER TABLE events ADD COLUMN leaderboard_fetched_at TEXT`);
+  } catch { /* column already exists */ }
 
   // Name fixes
   await client.execute(`UPDATE managers SET name = 'Matt Donnelly' WHERE id = 'matthew'`);
@@ -108,7 +117,7 @@ export const storage: IStorage = {
   async upsertEvent(e) {
     await db.insert(events).values(e).onConflictDoUpdate({
       target: events.id,
-      set: { name: e.name, startDate: e.startDate, endDate: e.endDate, venue: e.venue, status: e.status, round: e.round, eventCategory: e.eventCategory, isMajor: e.isMajor, isCurrent: e.isCurrent, categoryOverride: e.categoryOverride }
+      set: { name: e.name, startDate: e.startDate, endDate: e.endDate, venue: e.venue, status: e.status, round: e.round, eventCategory: e.eventCategory, isMajor: e.isMajor, isCurrent: e.isCurrent, categoryOverride: e.categoryOverride, leaderboardFetchedAt: e.leaderboardFetchedAt }
     }).run();
   },
   async setCurrentEvent(id) {

@@ -168,7 +168,11 @@ export async function fetchLeaderboard(eventId: string) {
     }
 
     if (event) {
-      await storage.upsertEvent({ ...event, status: espnEvent.status?.type?.description ?? event.status });
+      await storage.upsertEvent({
+        ...event,
+        status: espnEvent.status?.type?.description ?? event.status,
+        leaderboardFetchedAt: new Date().toISOString(),
+      });
     }
 
     return { ok: true, count: competitors.length };

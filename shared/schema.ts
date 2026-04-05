@@ -45,6 +45,7 @@ export const events = sqliteTable("events", {
   isMajor: integer("is_major", { mode: "boolean" }).notNull().default(false),
   isCurrent: integer("is_current", { mode: "boolean" }).notNull().default(false),
   categoryOverride: text("category_override"), // manual override
+  leaderboardFetchedAt: text("leaderboard_fetched_at"), // ISO timestamp of last ESPN fetch
 });
 export const insertEventSchema = createInsertSchema(events);
 export type InsertEvent = z.infer<typeof insertEventSchema>;

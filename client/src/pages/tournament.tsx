@@ -35,6 +35,7 @@ interface CurrentEventData {
     isMajor: boolean;
     venue: string | null;
     startDate: string | null;
+    leaderboardFetchedAt: string | null;
   };
   results: EventResult[];
   managerRollup: ManagerRollup[];
@@ -162,15 +163,22 @@ export default function Tournament() {
             {" · "}{event.status}
           </p>
         </div>
-        <button
-          className="btn-secondary flex items-center gap-2"
-          onClick={() => refreshMutation.mutate()}
-          disabled={refreshMutation.isPending}
-          data-testid="button-refresh-leaderboard"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-1)" }}>
+          <button
+            className="btn-secondary flex items-center gap-2"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            data-testid="button-refresh-leaderboard"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          {event.leaderboardFetchedAt && (
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint, var(--color-text-muted))" }}>
+              updated {new Date(event.leaderboardFetchedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Manager roll-up KPI strip */}
