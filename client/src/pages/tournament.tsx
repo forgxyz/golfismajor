@@ -199,27 +199,24 @@ export default function Tournament() {
           </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-1)" }}>
-          <div style={{ display: "flex", gap: "var(--space-2)" }}>
-            <button
-              className="btn-secondary flex items-center gap-2"
-              onClick={() => refreshOddsMutation.mutate()}
-              disabled={refreshOddsMutation.isPending}
-              title="Refresh Polymarket odds"
-              data-testid="button-refresh-odds"
-            >
-              <TrendingUp className={`w-4 h-4 ${refreshOddsMutation.isPending ? "animate-spin" : ""}`} />
-              {hasOdds ? "Odds" : "Get Odds"}
-            </button>
-            <button
-              className="btn-secondary flex items-center gap-2"
-              onClick={() => refreshMutation.mutate()}
-              disabled={refreshMutation.isPending}
-              data-testid="button-refresh-leaderboard"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+          <button
+            className="btn-secondary flex items-center gap-2"
+            onClick={() => refreshMutation.mutate()}
+            disabled={refreshMutation.isPending}
+            data-testid="button-refresh-leaderboard"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          <button
+            onClick={() => refreshOddsMutation.mutate()}
+            disabled={refreshOddsMutation.isPending}
+            data-testid="button-refresh-odds"
+            style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "var(--space-1)", padding: "2px 0" }}
+          >
+            <TrendingUp size={11} className={refreshOddsMutation.isPending ? "animate-spin" : ""} />
+            Update Odds
+          </button>
           {event.leaderboardFetchedAt && (
             <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint, var(--color-text-muted))" }}>
               updated {new Date(event.leaderboardFetchedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
@@ -318,7 +315,7 @@ export default function Tournament() {
           <Flag className="w-8 h-8 mx-auto mb-2 opacity-30" />
           <p className="font-medium">{eventStarted ? "No leaderboard data yet" : "Tournament hasn't started"}</p>
           <p className="text-sm text-muted-foreground mt-1">
-            {eventStarted ? "Click Refresh to pull the live leaderboard from ESPN." : "Click Get Odds to load Polymarket win probabilities."}
+            {eventStarted ? "Click Refresh to pull the live leaderboard from ESPN." : "Click Update Odds to load Polymarket win probabilities."}
           </p>
         </div>
       )}

@@ -207,47 +207,114 @@ export async function fetchLeaderboard(eventId: string) {
   }
 }
 
-const POLYMARKET_GAMMA = "https://gamma-api.polymarket.com/markets";
-// Outcomes to skip — not real players
-const ODDS_EXCLUDED = new Set(["other", "field", "the field", "any other player"]);
+const POLYMARKET_EVENTS = "https://gamma-api.polymarket.com/events";
+const POLYMARKET_MARKETS = "https://gamma-api.polymarket.com/markets";
+// Outcome labels that aren't real players
+const ODDS_EXCLUDED = new Set(["other", "field", "the field", "any other player", "yes", "no"]);
+
+// Build multiple search queries from a tournament name, shortest first
+function polymarketQueries(name: string): string[] {
+  const year = new Date().getFullYear();
+  const stripped = name.replace(/\b(the|tournament|championship|invitational|classic)\b/gi, "").replace(/\s+/g, " ").trim();
+  return [...new Set([`${stripped} ${year}`, `${name} ${year}`, stripped, name])].filter(Boolean);
+}
+
+// Pull player name out of "Will Scottie Scheffler win The Masters?" style questions
+function extractPlayer(question: string): string | null {
+  return (question.match(/^Will (.+?) win\b/i) ?? question.match(/^(.+?)\s+to win\b/i))?.[1]?.trim() ?? null;
+}
 
 export async function fetchPolymarketOdds(eventId: string, tournamentName: string) {
   try {
-    const search = encodeURIComponent(`${tournamentName} winner`);
-    const url = `${POLYMARKET_GAMMA}?search=${search}&limit=15&active=true`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`Polymarket API error: ${res.status}`);
-    const markets: any[] = await res.json();
+    // Load all aliases once — avoids N+1 DB calls (was ~50 queries, now 1)
+    const allAliases = await storage.getAllAliases();
+    const aliasMap = new Map(allAliases.map(a => [a.apiName.toLowerCase(), a.canonicalName]));
+    const resolve = (name: string) => aliasMap.get(name.toLowerCase()) ?? name;
 
-    const active = (Array.isArray(markets) ? markets : [])
-      .filter(m => m.active && !m.closed && m.outcomes && m.outcomePrices);
+    const queries = polymarketQueries(tournamentName);
+    console.log(`[polymarket] Starting odds fetch for "${tournamentName}". Queries: ${JSON.stringify(queries)}`);
 
-    if (active.length === 0) {
-      console.log(`[polymarket] No active markets found for "${tournamentName}"`);
-      return { ok: false, error: "No Polymarket market found for this event" };
+    // ── Pass 1: /events endpoint (Polymarket groups per-player binary markets under an event) ──
+    for (const q of queries) {
+      const url = `${POLYMARKET_EVENTS}?search=${encodeURIComponent(q)}&limit=10&active=true`;
+      console.log(`[polymarket] GET ${url}`);
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) { console.warn(`[polymarket] Events API returned ${res.status} for "${q}"`); continue; }
+      const evts: any[] = await res.json();
+      console.log(`[polymarket] Events for "${q}": ${evts.length} — ${evts.slice(0, 5).map((e: any) => `"${e.title}"`).join(", ")}`);
+
+      const evt = evts.filter((e: any) => !e.closed).sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
+      if (!evt) continue;
+      console.log(`[polymarket] Selected event: "${evt.title}" slug="${evt.slug}" markets=${evt.markets?.length ?? 0} volume=$${parseFloat(evt.volume ?? "0").toFixed(0)}`);
+
+      const playerOdds = new Map<string, number>();
+
+      if (Array.isArray(evt.markets) && evt.markets.length > 0) {
+        for (const m of evt.markets) {
+          if (m.closed || !m.active || !m.outcomes || !m.outcomePrices) continue;
+          const outcomes: string[] = JSON.parse(m.outcomes);
+          const prices: string[] = JSON.parse(m.outcomePrices);
+
+          // Binary YES/NO per-player market — extract name from question
+          if (outcomes.length === 2 && outcomes[0]?.toLowerCase() === "yes") {
+            const player = extractPlayer(m.question ?? "");
+            if (!player) { console.warn(`[polymarket] Unparseable question: "${m.question}"`); continue; }
+            const prob = parseFloat(prices[0] ?? "0");
+            if (prob > 0) playerOdds.set(player, prob);
+          } else {
+            // Multi-outcome market nested inside the event
+            for (let i = 0; i < outcomes.length; i++) {
+              const name = outcomes[i];
+              if (ODDS_EXCLUDED.has(name.toLowerCase())) continue;
+              const prob = parseFloat(prices[i] ?? "0");
+              if (prob > 0) playerOdds.set(name, prob);
+            }
+          }
+        }
+      }
+
+      if (playerOdds.size === 0) { console.log(`[polymarket] Event found but no odds parsed — trying next query`); continue; }
+
+      await storage.clearEventOdds(eventId);
+      for (const [raw, probability] of playerOdds) {
+        await storage.upsertEventOdds({ eventId, playerName: resolve(raw), probability, fetchedAt: new Date().toISOString() });
+      }
+      console.log(`[polymarket] Stored ${playerOdds.size} odds from event "${evt.title}"`);
+      return { ok: true, count: playerOdds.size, marketQuestion: evt.title };
     }
 
-    // Pick highest-volume market
-    const market = active.sort((a, b) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
-    const outcomes: string[] = JSON.parse(market.outcomes);
-    const prices: string[] = JSON.parse(market.outcomePrices);
+    // ── Pass 2: /markets endpoint fallback (single multi-outcome market) ──
+    for (const q of queries) {
+      const url = `${POLYMARKET_MARKETS}?search=${encodeURIComponent(q)}&limit=15&active=true`;
+      console.log(`[polymarket] Markets fallback GET ${url}`);
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) { console.warn(`[polymarket] Markets API returned ${res.status} for "${q}"`); continue; }
+      const markets: any[] = await res.json();
+      const active = (Array.isArray(markets) ? markets : []).filter((m: any) => m.active && !m.closed && m.outcomes && m.outcomePrices);
+      console.log(`[polymarket] Markets for "${q}": ${active.length} active — ${active.slice(0, 3).map((m: any) => `"${m.question}"`).join(", ")}`);
+      if (active.length === 0) continue;
 
-    console.log(`[polymarket] Market: "${market.question}" — ${outcomes.length} outcomes, volume $${parseFloat(market.volume ?? "0").toFixed(0)}`);
+      const market = active.sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
+      const outcomes: string[] = JSON.parse(market.outcomes);
+      const prices: string[] = JSON.parse(market.outcomePrices);
+      console.log(`[polymarket] Using market: "${market.question}" ${outcomes.length} outcomes volume=$${parseFloat(market.volume ?? "0").toFixed(0)}`);
 
-    await storage.clearEventOdds(eventId);
-    let count = 0;
-    for (let i = 0; i < outcomes.length; i++) {
-      const rawName: string = outcomes[i] ?? "";
-      if (ODDS_EXCLUDED.has(rawName.toLowerCase())) continue;
-      const probability = parseFloat(prices[i] ?? "0");
-      if (probability <= 0) continue;
-      const playerName = await storage.resolveAlias(rawName);
-      await storage.upsertEventOdds({ eventId, playerName, probability, fetchedAt: new Date().toISOString() });
-      count++;
+      await storage.clearEventOdds(eventId);
+      let count = 0;
+      for (let i = 0; i < outcomes.length; i++) {
+        const name = outcomes[i] ?? "";
+        if (ODDS_EXCLUDED.has(name.toLowerCase())) continue;
+        const prob = parseFloat(prices[i] ?? "0");
+        if (prob <= 0) continue;
+        await storage.upsertEventOdds({ eventId, playerName: resolve(name), probability: prob, fetchedAt: new Date().toISOString() });
+        count++;
+      }
+      console.log(`[polymarket] Stored ${count} odds from market "${market.question}"`);
+      return { ok: true, count, marketQuestion: market.question };
     }
 
-    console.log(`[polymarket] Stored ${count} player odds for event "${eventId}"`);
-    return { ok: true, count, marketQuestion: market.question };
+    console.log(`[polymarket] No usable market found for "${tournamentName}" — exhausted queries: ${JSON.stringify(queries)}`);
+    return { ok: false, error: "No Polymarket market found for this event" };
   } catch (e: any) {
     console.error(`[polymarket] fetchPolymarketOdds error: ${e.message}`);
     return { ok: false, error: e.message };
