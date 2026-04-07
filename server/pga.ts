@@ -76,7 +76,7 @@ export async function fetchSchedule() {
   }
 }
 
-export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; error?: string }> {
+export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; count?: number; error?: string }> {
   try {
     const result = await fetchSchedule();
     if (!result.ok) return result as any;
@@ -84,15 +84,28 @@ export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: st
     const todayStr = new Date().toISOString().slice(0, 10);
     const allEvents = await storage.getAllEvents();
 
+    // 1. Active event: today falls within its dates
     let match = allEvents.find(e => e.startDate && e.endDate && e.startDate <= todayStr && todayStr <= e.endDate);
 
+    // 2. Recently-ended event within 1 day (Monday recap window — Sun finish → Mon still shows it)
     if (!match) {
       const recent = allEvents
         .filter(e => e.endDate && e.endDate < todayStr)
         .sort((a, b) => (b.endDate ?? "").localeCompare(a.endDate ?? ""))[0];
       if (recent) {
         const daysDiff = (new Date(todayStr).getTime() - new Date(recent.endDate!).getTime()) / 86400000;
-        if (daysDiff <= 2) match = recent;
+        if (daysDiff <= 1) match = recent;
+      }
+    }
+
+    // 3. Next upcoming event within 7 days (covers week-to-week gaps; larger gaps mean no event or a bad schedule pull)
+    if (!match) {
+      const upcoming = allEvents
+        .filter(e => e.startDate && e.startDate > todayStr)
+        .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))[0];
+      if (upcoming) {
+        const daysUntil = (new Date(upcoming.startDate!).getTime() - new Date(todayStr).getTime()) / 86400000;
+        if (daysUntil <= 7) match = upcoming;
       }
     }
 
@@ -104,7 +117,7 @@ export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: st
     await storage.upsertEvent({ ...match, isCurrent: true });
 
     console.log(`[pga] Auto-detected current event: ${match.name}`);
-    return { ok: true, name: match.name };
+    return { ok: true, name: match.name, count: result.count };
   } catch (e: any) {
     console.error("[pga] autoDetectCurrentEvent error:", e.message);
     return { ok: false, error: e.message };

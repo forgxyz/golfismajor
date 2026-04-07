@@ -44,6 +44,7 @@ export default function AdminPage() {
   const setCurrentEvent = useMutation({
     mutationFn: (id: string) => apiRequest("POST", `/api/events/${id}/set-current`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/events"] }); queryClient.invalidateQueries({ queryKey: ["/api/current-event"] }); toast({ title: "Current event updated" }); },
+    onError: (e: any) => toast({ title: "Failed to set current event", description: e.message, variant: "destructive" }),
   });
   const updateCategory = useMutation({
     mutationFn: ({ id, category }: { id: string; category: string }) => apiRequest("POST", `/api/events/${id}/category`, { category }),
@@ -53,8 +54,11 @@ export default function AdminPage() {
     mutationFn: () => apiRequest("POST", "/api/refresh/schedule"),
     onSuccess: async (res) => {
       queryClient.invalidateQueries({ queryKey: ["/api/events"] });
-      const data = await res.json?.() ?? {};
-      setScheduleResult(`Fetched ${data.count ?? 0} events from TheSportsDB`);
+      queryClient.invalidateQueries({ queryKey: ["/api/current-event"] });
+      const data = await res.json();
+      const msg = data.count != null ? `Fetched ${data.count} events.` : "";
+      const current = data.name ? ` Current: ${data.name}` : (data.error ? ` No current event: ${data.error}` : "");
+      setScheduleResult((msg + current).trim() || "Done");
       toast({ title: "Schedule refreshed" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
