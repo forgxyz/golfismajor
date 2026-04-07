@@ -76,7 +76,7 @@ export async function fetchSchedule() {
   }
 }
 
-export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; error?: string }> {
+export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; count?: number; error?: string }> {
   try {
     const result = await fetchSchedule();
     if (!result.ok) return result as any;
@@ -84,8 +84,21 @@ export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: st
     const todayStr = new Date().toISOString().slice(0, 10);
     const allEvents = await storage.getAllEvents();
 
+    // 1. Active event: today falls within its dates
     let match = allEvents.find(e => e.startDate && e.endDate && e.startDate <= todayStr && todayStr <= e.endDate);
 
+    // 2. Upcoming event starting within 5 days (pre-tournament week)
+    if (!match) {
+      const upcoming = allEvents
+        .filter(e => e.startDate && e.startDate > todayStr)
+        .sort((a, b) => (a.startDate ?? "").localeCompare(b.startDate ?? ""))[0];
+      if (upcoming) {
+        const daysUntil = (new Date(upcoming.startDate!).getTime() - new Date(todayStr).getTime()) / 86400000;
+        if (daysUntil <= 5) match = upcoming;
+      }
+    }
+
+    // 3. Recently-ended event within 2 days
     if (!match) {
       const recent = allEvents
         .filter(e => e.endDate && e.endDate < todayStr)
@@ -104,7 +117,7 @@ export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: st
     await storage.upsertEvent({ ...match, isCurrent: true });
 
     console.log(`[pga] Auto-detected current event: ${match.name}`);
-    return { ok: true, name: match.name };
+    return { ok: true, name: match.name, count: result.count };
   } catch (e: any) {
     console.error("[pga] autoDetectCurrentEvent error:", e.message);
     return { ok: false, error: e.message };
