@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { computeStandings, pointsForPosition, classifyEvent, isMajor, type EventCategory } from "./scoring";
-import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, loadInitialFedexStandings, fetchFedexStandings } from "./pga";
+import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, detectCurrentEventFromDB, loadInitialFedexStandings, fetchFedexStandings } from "./pga";
 import { seedIfNeeded } from "./seed";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
@@ -136,8 +136,21 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
   // ── Refresh leaderboard ────────────────────────────────────
   app.post("/api/refresh/leaderboard", async (_req, res) => {
-    const event = await storage.getCurrentEvent();
-    if (!event) return res.status(400).json({ error: "No current event set" });
+    let event = await storage.getCurrentEvent();
+
+    if (!event) {
+      // Try to auto-detect from existing DB events (no TheSportsDB call)
+      await detectCurrentEventFromDB();
+      event = await storage.getCurrentEvent();
+    }
+
+    if (!event) {
+      // Nothing usable in DB — pull fresh schedule from TheSportsDB then detect
+      await autoDetectCurrentEvent();
+      event = await storage.getCurrentEvent();
+    }
+
+    if (!event) return res.status(400).json({ error: "No current event set — try pulling the schedule from Admin" });
     const result = await fetchLeaderboard(event.id);
     res.json(result);
   });

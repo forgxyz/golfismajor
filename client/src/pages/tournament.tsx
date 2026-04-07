@@ -136,6 +136,11 @@ export default function Tournament() {
 
   const { event, results, managerRollup } = data;
 
+  // Don't show projected points before the tournament has teed off
+  const eventStarted = event.startDate
+    ? new Date(event.startDate + "T12:00:00") <= new Date()
+    : true;
+
   // Build set of unique manager IDs present in results for the legend
   const activeManagerIds = [...new Set(results.filter(r => r.isRostered && r.managerId).map(r => r.managerId!))];
 
@@ -181,8 +186,8 @@ export default function Tournament() {
         </div>
       </div>
 
-      {/* Manager roll-up KPI strip */}
-      {results.length > 0 && (
+      {/* Manager roll-up KPI strip — only shown once tournament has started */}
+      {results.length > 0 && eventStarted && (
         <div className="kpi-grid kpi-grid-3x2">
           {managerRollup.map((m) => (
             <div
@@ -276,7 +281,7 @@ export default function Tournament() {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }} className="hidden sm:table-cell">
-                        {isRostered && displayPoints > 0 ? (
+                        {isRostered && eventStarted && displayPoints > 0 ? (
                           <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{displayPoints.toLocaleString()}</span>
                         ) : isRostered ? (
                           <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>—</span>

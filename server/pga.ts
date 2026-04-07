@@ -76,13 +76,13 @@ export async function fetchSchedule() {
   }
 }
 
-export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; count?: number; error?: string }> {
+// Detect current event using only existing DB data — no external API calls.
+// Used by leaderboard refresh so it avoids hitting TheSportsDB on every click.
+export async function detectCurrentEventFromDB(): Promise<{ ok: boolean; name?: string; error?: string }> {
   try {
-    const result = await fetchSchedule();
-    if (!result.ok) return result as any;
-
     const todayStr = new Date().toISOString().slice(0, 10);
     const allEvents = await storage.getAllEvents();
+    if (allEvents.length === 0) return { ok: false, error: "No events in database" };
 
     // 1. Active event: today falls within its dates
     let match = allEvents.find(e => e.startDate && e.endDate && e.startDate <= todayStr && todayStr <= e.endDate);
@@ -116,8 +116,20 @@ export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: st
     }
     await storage.upsertEvent({ ...match, isCurrent: true });
 
-    console.log(`[pga] Auto-detected current event: ${match.name}`);
-    return { ok: true, name: match.name, count: result.count };
+    console.log(`[pga] Detected current event (from DB): ${match.name}`);
+    return { ok: true, name: match.name };
+  } catch (e: any) {
+    console.error("[pga] detectCurrentEventFromDB error:", e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+export async function autoDetectCurrentEvent(): Promise<{ ok: boolean; name?: string; count?: number; error?: string }> {
+  try {
+    const result = await fetchSchedule();
+    if (!result.ok) return result as any;
+    const detected = await detectCurrentEventFromDB();
+    return { ...detected, count: result.count };
   } catch (e: any) {
     console.error("[pga] autoDetectCurrentEvent error:", e.message);
     return { ok: false, error: e.message };
