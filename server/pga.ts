@@ -234,46 +234,64 @@ export async function fetchPolymarketOdds(eventId: string, tournamentName: strin
     const queries = polymarketQueries(tournamentName);
     console.log(`[polymarket] Starting odds fetch for "${tournamentName}". Queries: ${JSON.stringify(queries)}`);
 
-    // ── Pass 1: /events endpoint (Polymarket groups per-player binary markets under an event) ──
+    // ── Pass 1: /events endpoint ──
+    // Note: do NOT filter by active=true — pre-tournament events are often active:false
+    // until play begins. Filter only on closed:false.
     for (const q of queries) {
-      const url = `${POLYMARKET_EVENTS}?search=${encodeURIComponent(q)}&limit=10&active=true`;
+      const url = `${POLYMARKET_EVENTS}?search=${encodeURIComponent(q)}&limit=10`;
       console.log(`[polymarket] GET ${url}`);
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) { console.warn(`[polymarket] Events API returned ${res.status} for "${q}"`); continue; }
+      if (!res.ok) { console.warn(`[polymarket] Events API ${res.status} for "${q}"`); continue; }
       const evts: any[] = await res.json();
-      console.log(`[polymarket] Events for "${q}": ${evts.length} — ${evts.slice(0, 5).map((e: any) => `"${e.title}"`).join(", ")}`);
+      console.log(`[polymarket] Events for "${q}": ${evts.length} — ${evts.slice(0, 5).map((e: any) => `"${e.title}" active=${e.active} closed=${e.closed}`).join(", ")}`);
 
       const evt = evts.filter((e: any) => !e.closed).sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
       if (!evt) continue;
-      console.log(`[polymarket] Selected event: "${evt.title}" slug="${evt.slug}" markets=${evt.markets?.length ?? 0} volume=$${parseFloat(evt.volume ?? "0").toFixed(0)}`);
+      console.log(`[polymarket] Selected event: "${evt.title}" id=${evt.id} slug="${evt.slug}" inline_markets=${evt.markets?.length ?? 0}`);
+
+      // Markets may be inline on the event, or may need a separate fetch by event_id
+      let markets: any[] = Array.isArray(evt.markets) && evt.markets.length > 0
+        ? evt.markets
+        : [];
+
+      if (markets.length === 0 && evt.id) {
+        const mUrl = `${POLYMARKET_MARKETS}?event_id=${evt.id}&limit=200`;
+        console.log(`[polymarket] No inline markets — fetching separately: ${mUrl}`);
+        const mRes = await fetch(mUrl, { signal: AbortSignal.timeout(8000) });
+        if (mRes.ok) {
+          markets = await mRes.json();
+          console.log(`[polymarket] Got ${markets.length} markets for event id=${evt.id}`);
+        }
+      }
+
+      if (markets.length === 0) { console.log(`[polymarket] No markets for event — trying next query`); continue; }
+      console.log(`[polymarket] Sample questions: ${markets.slice(0, 3).map((m: any) => `"${m.question}"`).join(", ")}`);
 
       const playerOdds = new Map<string, number>();
+      for (const m of markets) {
+        // Don't filter by m.active — pre-tournament markets may be active:false
+        if (m.closed || !m.outcomes || !m.outcomePrices) continue;
+        const outcomes: string[] = JSON.parse(m.outcomes);
+        const prices: string[] = JSON.parse(m.outcomePrices);
 
-      if (Array.isArray(evt.markets) && evt.markets.length > 0) {
-        for (const m of evt.markets) {
-          if (m.closed || !m.active || !m.outcomes || !m.outcomePrices) continue;
-          const outcomes: string[] = JSON.parse(m.outcomes);
-          const prices: string[] = JSON.parse(m.outcomePrices);
-
+        if (outcomes.length === 2 && outcomes[0]?.toLowerCase() === "yes") {
           // Binary YES/NO per-player market — extract name from question
-          if (outcomes.length === 2 && outcomes[0]?.toLowerCase() === "yes") {
-            const player = extractPlayer(m.question ?? "");
-            if (!player) { console.warn(`[polymarket] Unparseable question: "${m.question}"`); continue; }
-            const prob = parseFloat(prices[0] ?? "0");
-            if (prob > 0) playerOdds.set(player, prob);
-          } else {
-            // Multi-outcome market nested inside the event
-            for (let i = 0; i < outcomes.length; i++) {
-              const name = outcomes[i];
-              if (ODDS_EXCLUDED.has(name.toLowerCase())) continue;
-              const prob = parseFloat(prices[i] ?? "0");
-              if (prob > 0) playerOdds.set(name, prob);
-            }
+          const player = extractPlayer(m.question ?? "");
+          if (!player) { console.warn(`[polymarket] Unparseable question: "${m.question}"`); continue; }
+          const prob = parseFloat(prices[0] ?? "0");
+          if (prob > 0) playerOdds.set(player, prob);
+        } else {
+          // Multi-outcome market nested inside the event
+          for (let i = 0; i < outcomes.length; i++) {
+            const name = outcomes[i];
+            if (ODDS_EXCLUDED.has(name.toLowerCase())) continue;
+            const prob = parseFloat(prices[i] ?? "0");
+            if (prob > 0) playerOdds.set(name, prob);
           }
         }
       }
 
-      if (playerOdds.size === 0) { console.log(`[polymarket] Event found but no odds parsed — trying next query`); continue; }
+      if (playerOdds.size === 0) { console.log(`[polymarket] Parsed 0 odds from ${markets.length} markets — trying next query`); continue; }
 
       await storage.clearEventOdds(eventId);
       for (const [raw, probability] of playerOdds) {
@@ -284,15 +302,16 @@ export async function fetchPolymarketOdds(eventId: string, tournamentName: strin
     }
 
     // ── Pass 2: /markets endpoint fallback (single multi-outcome market) ──
+    // Also no active=true filter here for the same reason.
     for (const q of queries) {
-      const url = `${POLYMARKET_MARKETS}?search=${encodeURIComponent(q)}&limit=15&active=true`;
+      const url = `${POLYMARKET_MARKETS}?search=${encodeURIComponent(q)}&limit=15`;
       console.log(`[polymarket] Markets fallback GET ${url}`);
       const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) { console.warn(`[polymarket] Markets API returned ${res.status} for "${q}"`); continue; }
+      if (!res.ok) { console.warn(`[polymarket] Markets API ${res.status} for "${q}"`); continue; }
       const markets: any[] = await res.json();
-      const active = (Array.isArray(markets) ? markets : []).filter((m: any) => m.active && !m.closed && m.outcomes && m.outcomePrices);
-      console.log(`[polymarket] Markets for "${q}": ${active.length} active — ${active.slice(0, 3).map((m: any) => `"${m.question}"`).join(", ")}`);
-      if (active.length === 0) continue;
+      const usable = (Array.isArray(markets) ? markets : []).filter((m: any) => !m.closed && m.outcomes && m.outcomePrices);
+      console.log(`[polymarket] Markets for "${q}": ${usable.length} usable — ${usable.slice(0, 3).map((m: any) => `"${m.question}"`).join(", ")}`);
+      if (usable.length === 0) continue;
 
       const market = active.sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
       const outcomes: string[] = JSON.parse(market.outcomes);
