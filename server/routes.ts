@@ -2,7 +2,7 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { computeStandings, pointsForPosition, classifyEvent, isMajor, type EventCategory } from "./scoring";
-import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, detectCurrentEventFromDB, loadInitialFedexStandings, fetchFedexStandings } from "./pga";
+import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, detectCurrentEventFromDB, loadInitialFedexStandings, fetchFedexStandings, fetchPolymarketOdds } from "./pga";
 import { seedIfNeeded } from "./seed";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
@@ -58,7 +58,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       projectedEventPoints: managerMap.get(m.id) ?? 0,
     })).sort((a, b) => b.projectedEventPoints - a.projectedEventPoints);
 
-    res.json({ event, results: allResults, managerRollup });
+    const oddsRows = await storage.getOddsByEvent(event.id);
+    const odds = oddsRows
+      .sort((a, b) => b.probability - a.probability)
+      .map(o => ({ playerName: o.playerName, probability: o.probability }));
+
+    // Flat roster map so client can highlight managers even before ESPN data loads
+    const rosterIndex = allRosters.map(r => {
+      const mgr = mgrs.find(m => m.id === r.managerId);
+      return { playerName: r.playerName, managerId: r.managerId, managerName: mgr?.name ?? "" };
+    });
+
+    res.json({ event, results: allResults, managerRollup, odds, roster: rosterIndex });
   });
 
   // ── All events ─────────────────────────────────────────────
@@ -152,6 +163,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
     if (!event) return res.status(400).json({ error: "No current event set — try pulling the schedule from Admin" });
     const result = await fetchLeaderboard(event.id);
+    res.json(result);
+  });
+
+  // ── Refresh Polymarket odds ────────────────────────────────
+  app.post("/api/refresh/odds", async (_req, res) => {
+    const event = await storage.getCurrentEvent();
+    if (!event) return res.status(400).json({ error: "No current event set" });
+    const result = await fetchPolymarketOdds(event.id, event.name);
     res.json(result);
   });
 

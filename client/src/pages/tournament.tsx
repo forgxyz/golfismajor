@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Flag, RefreshCw } from "lucide-react";
+import { Flag, RefreshCw, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface EventResult {
@@ -25,6 +25,17 @@ interface ManagerRollup {
   projectedEventPoints: number;
 }
 
+interface OddsEntry {
+  playerName: string;
+  probability: number; // 0-1
+}
+
+interface RosterEntry {
+  playerName: string;
+  managerId: string;
+  managerName: string;
+}
+
 interface CurrentEventData {
   event: {
     id: string;
@@ -39,6 +50,8 @@ interface CurrentEventData {
   };
   results: EventResult[];
   managerRollup: ManagerRollup[];
+  odds: OddsEntry[];
+  roster: RosterEntry[];
 }
 
 // Manager color palette (matches 6 managers)
@@ -109,6 +122,16 @@ export default function Tournament() {
     onError: (e: any) => toast({ title: "Refresh failed", description: e.message, variant: "destructive" }),
   });
 
+  const refreshOddsMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/refresh/odds"),
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/current-event"] });
+      const data = await res.json();
+      toast({ title: data.ok ? `Odds loaded — ${data.count} players` : "No odds found", description: data.marketQuestion ?? data.error ?? undefined });
+    },
+    onError: (e: any) => toast({ title: "Odds refresh failed", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) {
     return (
       <div className="page">
@@ -134,12 +157,19 @@ export default function Tournament() {
     );
   }
 
-  const { event, results, managerRollup } = data;
+  const { event, results, managerRollup, odds, roster } = data;
 
   // Don't show projected points before the tournament has teed off
   const eventStarted = event.startDate
     ? new Date(event.startDate + "T12:00:00") <= new Date()
     : true;
+
+  // Build odds lookup: lowercase name → probability
+  const oddsMap = new Map<string, number>(odds.map(o => [o.playerName.toLowerCase(), o.probability]));
+  const hasOdds = odds.length > 0;
+
+  // Roster lookup by player name (works even when results is empty pre-tournament)
+  const rosterMap = new Map<string, RosterEntry>(roster.map(r => [r.playerName.toLowerCase(), r]));
 
   // Build set of unique manager IDs present in results for the legend
   const activeManagerIds = [...new Set(results.filter(r => r.isRostered && r.managerId).map(r => r.managerId!))];
@@ -169,15 +199,27 @@ export default function Tournament() {
           </p>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "var(--space-1)" }}>
-          <button
-            className="btn-secondary flex items-center gap-2"
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            data-testid="button-refresh-leaderboard"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          <div style={{ display: "flex", gap: "var(--space-2)" }}>
+            <button
+              className="btn-secondary flex items-center gap-2"
+              onClick={() => refreshOddsMutation.mutate()}
+              disabled={refreshOddsMutation.isPending}
+              title="Refresh Polymarket odds"
+              data-testid="button-refresh-odds"
+            >
+              <TrendingUp className={`w-4 h-4 ${refreshOddsMutation.isPending ? "animate-spin" : ""}`} />
+              {hasOdds ? "Odds" : "Get Odds"}
+            </button>
+            <button
+              className="btn-secondary flex items-center gap-2"
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+              data-testid="button-refresh-leaderboard"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshMutation.isPending ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
           {event.leaderboardFetchedAt && (
             <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-faint, var(--color-text-muted))" }}>
               updated {new Date(event.leaderboardFetchedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
@@ -206,21 +248,87 @@ export default function Tournament() {
         </div>
       )}
 
-      {/* Empty state before refresh */}
-      {results.length === 0 && (
-        <div className="empty-state mb-6">
-          <Flag className="w-8 h-8 mx-auto mb-2 opacity-30" />
-          <p className="font-medium">No leaderboard data yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Click Refresh to pull the live leaderboard from ESPN.</p>
+      {/* Pre-tournament odds table (no live scores yet, but odds available) */}
+      {!eventStarted && hasOdds && (
+        <div className="table-card">
+          <div className="table-card-header">
+            <div className="table-card-title" style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+              <TrendingUp size={15} style={{ color: "var(--color-primary)" }} />
+              Polymarket Odds
+            </div>
+            <div className="hidden sm:flex items-center gap-3 flex-wrap justify-end">
+              {activeManagerIds.map(mid => (
+                <div key={mid} className="flex items-center gap-1.5 text-xs">
+                  <span className={`w-2.5 h-2.5 rounded-full ${MANAGER_DOT[mid] ?? "bg-gray-400"}`} />
+                  <span className={MANAGER_TEXT[mid] ?? ""}>{managerNames[mid]?.split(" ")[0]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }}>#</th>
+                  <th>PLAYER</th>
+                  <th style={{ textAlign: "right" }}>WIN %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {odds.map((o, idx) => {
+                  const entry = rosterMap.get(o.playerName.toLowerCase());
+                  const isRostered = !!entry;
+                  const mid = entry?.managerId ?? "";
+
+                  return (
+                    <tr
+                      key={o.playerName}
+                      data-testid={`odds-row-${idx}`}
+                      className={isRostered ? MANAGER_COLORS[mid] ?? "" : ""}
+                    >
+                      <td style={{ color: "var(--color-text-muted)", fontFamily: "monospace", fontSize: "var(--text-xs)" }}>{idx + 1}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                          {isRostered && <span className={`w-2 h-2 rounded-full flex-shrink-0 ${MANAGER_DOT[mid] ?? "bg-gray-400"}`} />}
+                          <span style={isRostered ? { fontWeight: 600 } : { color: "var(--color-text-muted)" }}>{o.playerName}</span>
+                          {isRostered && entry && (
+                            <span className={`hidden sm:inline text-xs ${MANAGER_TEXT[mid] ?? ""}`}>
+                              {entry.managerName.split(" ")[0]}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: "var(--text-xs)", fontWeight: isRostered ? 700 : 400, color: isRostered ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+                          {(o.probability * 100).toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
-      {/* Full leaderboard */}
+      {/* Empty state — no leaderboard and no odds */}
+      {results.length === 0 && !hasOdds && (
+        <div className="empty-state mb-6">
+          <Flag className="w-8 h-8 mx-auto mb-2 opacity-30" />
+          <p className="font-medium">{eventStarted ? "No leaderboard data yet" : "Tournament hasn't started"}</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {eventStarted ? "Click Refresh to pull the live leaderboard from ESPN." : "Click Get Odds to load Polymarket win probabilities."}
+          </p>
+        </div>
+      )}
+
+      {/* Live leaderboard */}
       {results.length > 0 && (
         <div className="table-card">
           <div className="table-card-header">
             <div className="table-card-title">
-              Live Leaderboard
+              {eventStarted ? "Live Leaderboard" : "Pre-Tournament Field"}
               <span className="table-card-meta" style={{ marginLeft: "var(--space-2)" }}>{results.length} players · {rosteredCount} rostered</span>
             </div>
             {/* Color legend */}
@@ -241,7 +349,7 @@ export default function Tournament() {
                   <th>POS</th>
                   <th>PLAYER</th>
                   <th style={{ textAlign: "right" }}>SCORE</th>
-                  <th style={{ textAlign: "right" }} className="hidden sm:table-cell">PROJ PTS</th>
+                  <th style={{ textAlign: "right" }} className="hidden sm:table-cell">{eventStarted ? "PROJ PTS" : "WIN %"}</th>
                 </tr>
               </thead>
               <tbody>
@@ -250,6 +358,7 @@ export default function Tournament() {
                   const displayPoints = effectiveDisplayPoints(r, results);
                   const isRostered = r.isRostered;
                   const mid = r.managerId ?? "";
+                  const winPct = oddsMap.get(r.playerName.toLowerCase());
 
                   return (
                     <tr
@@ -281,11 +390,19 @@ export default function Tournament() {
                         </span>
                       </td>
                       <td style={{ textAlign: "right" }} className="hidden sm:table-cell">
-                        {isRostered && eventStarted && displayPoints > 0 ? (
-                          <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{displayPoints.toLocaleString()}</span>
-                        ) : isRostered ? (
-                          <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>—</span>
-                        ) : null}
+                        {eventStarted ? (
+                          isRostered && displayPoints > 0 ? (
+                            <span style={{ fontSize: "var(--text-xs)", fontWeight: 600, color: "var(--color-primary)" }}>{displayPoints.toLocaleString()}</span>
+                          ) : isRostered ? (
+                            <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>—</span>
+                          ) : null
+                        ) : (
+                          winPct != null ? (
+                            <span style={{ fontSize: "var(--text-xs)", fontWeight: isRostered ? 700 : 400, color: isRostered ? "var(--color-primary)" : "var(--color-text-muted)" }}>
+                              {(winPct * 100).toFixed(1)}%
+                            </span>
+                          ) : null
+                        )}
                       </td>
                     </tr>
                   );

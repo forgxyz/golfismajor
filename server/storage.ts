@@ -3,11 +3,11 @@ import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "../shared/schema";
 import { eq, and } from "drizzle-orm";
 import {
-  managers, rosters, playerTotals, events, eventResults, majorPayouts, playerAliases, leagueRules,
+  managers, rosters, playerTotals, events, eventResults, majorPayouts, playerAliases, leagueRules, eventOdds,
   type Manager, type Roster, type PlayerTotals, type Event, type EventResult,
-  type MajorPayout, type PlayerAlias, type LeagueRules,
+  type MajorPayout, type PlayerAlias, type LeagueRules, type EventOdds,
   type InsertManager, type InsertRoster, type InsertPlayerTotals, type InsertEvent,
-  type InsertEventResult, type InsertMajorPayout, type InsertPlayerAlias, type InsertLeagueRules,
+  type InsertEventResult, type InsertMajorPayout, type InsertPlayerAlias, type InsertLeagueRules, type InsertEventOdds,
 } from "../shared/schema";
 
 // Use Turso in production, local SQLite file in development
@@ -31,6 +31,7 @@ export async function initDb() {
     CREATE TABLE IF NOT EXISTS major_payouts (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, event_name TEXT NOT NULL, season INTEGER NOT NULL, winner_name TEXT, manager_id TEXT, payout_amount REAL NOT NULL DEFAULT 250, triggered INTEGER NOT NULL DEFAULT 0, UNIQUE(event_id, season));
     CREATE TABLE IF NOT EXISTS player_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, api_name TEXT NOT NULL UNIQUE, canonical_name TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS league_rules (key TEXT PRIMARY KEY, value TEXT NOT NULL, description TEXT);
+    CREATE TABLE IF NOT EXISTS event_odds (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, player_name TEXT NOT NULL, probability REAL NOT NULL, fetched_at TEXT, UNIQUE(event_id, player_name));
   `);
 
   // Add columns to events if missing (idempotent)
@@ -78,6 +79,10 @@ export interface IStorage {
   upsertEventResult(r: InsertEventResult): Promise<void>;
   clearEventResults(eventId: string): Promise<void>;
   overridePlayerPoints(eventId: string, playerName: string, points: number): Promise<void>;
+  // Event Odds
+  getOddsByEvent(eventId: string): Promise<EventOdds[]>;
+  upsertEventOdds(o: InsertEventOdds): Promise<void>;
+  clearEventOdds(eventId: string): Promise<void>;
   // Major Payouts
   getAllMajorPayouts(): Promise<MajorPayout[]>;
   upsertMajorPayout(p: InsertMajorPayout): Promise<void>;
@@ -136,6 +141,15 @@ export const storage: IStorage = {
       and(eq(eventResults.eventId, eventId), eq(eventResults.playerName, playerName))
     ).run();
   },
+
+  async getOddsByEvent(eventId) { return db.select().from(eventOdds).where(eq(eventOdds.eventId, eventId)).all(); },
+  async upsertEventOdds(o) {
+    await db.insert(eventOdds).values(o).onConflictDoUpdate({
+      target: [eventOdds.eventId, eventOdds.playerName],
+      set: { probability: o.probability, fetchedAt: o.fetchedAt },
+    }).run();
+  },
+  async clearEventOdds(eventId) { await db.delete(eventOdds).where(eq(eventOdds.eventId, eventId)).run(); },
 
   async getAllMajorPayouts() { return db.select().from(majorPayouts).all(); },
   async upsertMajorPayout(p) { await db.insert(majorPayouts).values(p).onConflictDoNothing().run(); },

@@ -207,6 +207,53 @@ export async function fetchLeaderboard(eventId: string) {
   }
 }
 
+const POLYMARKET_GAMMA = "https://gamma-api.polymarket.com/markets";
+// Outcomes to skip — not real players
+const ODDS_EXCLUDED = new Set(["other", "field", "the field", "any other player"]);
+
+export async function fetchPolymarketOdds(eventId: string, tournamentName: string) {
+  try {
+    const search = encodeURIComponent(`${tournamentName} winner`);
+    const url = `${POLYMARKET_GAMMA}?search=${search}&limit=15&active=true`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`Polymarket API error: ${res.status}`);
+    const markets: any[] = await res.json();
+
+    const active = (Array.isArray(markets) ? markets : [])
+      .filter(m => m.active && !m.closed && m.outcomes && m.outcomePrices);
+
+    if (active.length === 0) {
+      console.log(`[polymarket] No active markets found for "${tournamentName}"`);
+      return { ok: false, error: "No Polymarket market found for this event" };
+    }
+
+    // Pick highest-volume market
+    const market = active.sort((a, b) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
+    const outcomes: string[] = JSON.parse(market.outcomes);
+    const prices: string[] = JSON.parse(market.outcomePrices);
+
+    console.log(`[polymarket] Market: "${market.question}" — ${outcomes.length} outcomes, volume $${parseFloat(market.volume ?? "0").toFixed(0)}`);
+
+    await storage.clearEventOdds(eventId);
+    let count = 0;
+    for (let i = 0; i < outcomes.length; i++) {
+      const rawName: string = outcomes[i] ?? "";
+      if (ODDS_EXCLUDED.has(rawName.toLowerCase())) continue;
+      const probability = parseFloat(prices[i] ?? "0");
+      if (probability <= 0) continue;
+      const playerName = await storage.resolveAlias(rawName);
+      await storage.upsertEventOdds({ eventId, playerName, probability, fetchedAt: new Date().toISOString() });
+      count++;
+    }
+
+    console.log(`[polymarket] Stored ${count} player odds for event "${eventId}"`);
+    return { ok: true, count, marketQuestion: market.question };
+  } catch (e: any) {
+    console.error(`[polymarket] fetchPolymarketOdds error: ${e.message}`);
+    return { ok: false, error: e.message };
+  }
+}
+
 const FEDEX_STANDINGS_2026 = [
   { name: "Jacob Bridgeman", points: 1452, rank: 1 },
   { name: "Cameron Young", points: 1323, rank: 2 },

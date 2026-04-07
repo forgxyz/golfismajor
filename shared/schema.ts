@@ -94,6 +94,18 @@ export const insertPlayerAliasSchema = createInsertSchema(playerAliases).omit({ 
 export type InsertPlayerAlias = z.infer<typeof insertPlayerAliasSchema>;
 export type PlayerAlias = typeof playerAliases.$inferSelect;
 
+// ---- Event Odds (from Polymarket) ----
+export const eventOdds = sqliteTable("event_odds", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventId: text("event_id").notNull(),
+  playerName: text("player_name").notNull(),
+  probability: real("probability").notNull(), // 0-1 implied probability from market price
+  fetchedAt: text("fetched_at"),
+});
+export const insertEventOddsSchema = createInsertSchema(eventOdds).omit({ id: true });
+export type InsertEventOdds = z.infer<typeof insertEventOddsSchema>;
+export type EventOdds = typeof eventOdds.$inferSelect;
+
 // ---- League Rules (editable config) ----
 export const leagueRules = sqliteTable("league_rules", {
   key: text("key").primaryKey(),
