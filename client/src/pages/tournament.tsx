@@ -43,30 +43,30 @@ interface CurrentEventData {
 
 // Manager color palette (matches 6 managers)
 const MANAGER_COLORS: Record<string, string> = {
-  jack:    "bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-500",
+  jack:    "bg-green-100 dark:bg-green-900/40 border-green-400 dark:border-green-500",
   michael: "bg-purple-100 dark:bg-purple-900/40 border-purple-400 dark:border-purple-500",
   matthew: "bg-orange-100 dark:bg-orange-900/40 border-orange-400 dark:border-orange-500",
   sean:    "bg-red-100 dark:bg-red-900/40 border-red-400 dark:border-red-500",
   ben:     "bg-yellow-100 dark:bg-yellow-900/40 border-yellow-400 dark:border-yellow-500",
-  peter:   "bg-green-100 dark:bg-green-900/40 border-green-400 dark:border-green-500",
+  peter:   "bg-blue-100 dark:bg-blue-900/40 border-blue-400 dark:border-blue-500",
 };
 
 const MANAGER_DOT: Record<string, string> = {
-  jack:    "bg-blue-500",
+  jack:    "bg-green-500",
   michael: "bg-purple-500",
   matthew: "bg-orange-500",
   sean:    "bg-red-500",
   ben:     "bg-yellow-500",
-  peter:   "bg-green-500",
+  peter:   "bg-blue-500",
 };
 
 const MANAGER_TEXT: Record<string, string> = {
-  jack:    "text-blue-700 dark:text-blue-300",
+  jack:    "text-green-700 dark:text-green-300",
   michael: "text-purple-700 dark:text-purple-300",
   matthew: "text-orange-700 dark:text-orange-300",
   sean:    "text-red-700 dark:text-red-300",
   ben:     "text-yellow-700 dark:text-yellow-300",
-  peter:   "text-green-700 dark:text-green-300",
+  peter:   "text-blue-700 dark:text-blue-300",
 };
 
 // Returns { label, tiedMinPos } — detects ties by score, not stored positionNum
