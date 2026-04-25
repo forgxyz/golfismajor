@@ -1,8 +1,5 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
 import { Star, DollarSign } from "lucide-react";
-import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
 
 interface MajorPayout {
   id: number;
@@ -27,24 +24,7 @@ interface MajorPayoutsData {
 }
 
 export default function MajorsPage() {
-  const { toast } = useToast();
   const { data, isLoading } = useQuery<MajorPayoutsData>({ queryKey: ["/api/major-payouts"] });
-
-  const [selectedMajorId, setSelectedMajorId] = useState<number | null>(null);
-  const [winnerInput, setWinnerInput] = useState("");
-
-  const triggerMutation = useMutation({
-    mutationFn: ({ id, winnerName }: { id: number; winnerName: string }) =>
-      apiRequest("POST", `/api/major-payouts/${id}/trigger`, { winnerName }),
-    onSuccess: (_, vars) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/major-payouts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/standings"] });
-      toast({ title: "Major payout recorded", description: `Winner: ${vars.winnerName}` });
-      setSelectedMajorId(null);
-      setWinnerInput("");
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
 
   if (isLoading) {
     return <div className="page"><div className="empty-state">Loading major data…</div></div>;
@@ -92,7 +72,7 @@ export default function MajorsPage() {
             <Star size={16} style={{ color: "var(--color-gold)" }} />
             Major Payout Ledger
           </div>
-          <div className="table-card-meta">Click a pending major to record winner</div>
+          <div className="table-card-meta">Settled automatically after each major</div>
         </div>
         <div className="table-wrap">
           <table>
@@ -131,18 +111,10 @@ export default function MajorsPage() {
                       }
                     </td>
                     <td>
-                      {p.triggered ? (
-                        <span className="status-badge status-final">✓ Final</span>
-                      ) : (
-                        <button
-                          className="btn btn-sm"
-                          style={{ background: "var(--color-gold-highlight)", color: "var(--color-gold)" }}
-                          onClick={() => setSelectedMajorId(p.id)}
-                          data-testid={`btn-trigger-${p.id}`}
-                        >
-                          Record Winner
-                        </button>
-                      )}
+                      {p.triggered
+                        ? <span className="status-badge status-final">✓ Final</span>
+                        : <span className="status-badge" style={{ background: "var(--color-gold-highlight)", color: "var(--color-gold)" }}>Pending</span>
+                      }
                     </td>
                   </tr>
                 );
@@ -151,52 +123,6 @@ export default function MajorsPage() {
           </table>
         </div>
       </div>
-
-      {/* Record winner modal/form */}
-      {selectedMajorId !== null && (
-        <div
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex",
-            alignItems: "center", justifyContent: "center", zIndex: 50
-          }}
-          onClick={() => setSelectedMajorId(null)}
-        >
-          <div
-            className="table-card"
-            style={{ width: 400, padding: "var(--space-6)", margin: 0 }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700, marginBottom: "var(--space-4)" }}>
-              Record Major Winner
-            </h2>
-            <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-muted)", marginBottom: "var(--space-4)" }}>
-              <strong>{payouts.find(p => p.id === selectedMajorId)?.eventName}</strong><br/>
-              If the winner is a rostered player, $250 is credited to their manager.
-            </p>
-            <div className="form-field" style={{ marginBottom: "var(--space-5)" }}>
-              <label className="form-label">Winner Name (exact spelling)</label>
-              <input
-                className="form-input"
-                value={winnerInput}
-                onChange={e => setWinnerInput(e.target.value)}
-                placeholder="e.g. Scottie Scheffler"
-                data-testid="input-winner-name"
-              />
-            </div>
-            <div style={{ display: "flex", gap: "var(--space-3)", justifyContent: "flex-end" }}>
-              <button className="btn btn-ghost" onClick={() => setSelectedMajorId(null)}>Cancel</button>
-              <button
-                className="btn btn-primary"
-                disabled={!winnerInput.trim() || triggerMutation.isPending}
-                onClick={() => triggerMutation.mutate({ id: selectedMajorId!, winnerName: winnerInput.trim() })}
-                data-testid="btn-confirm-winner"
-              >
-                Confirm Winner
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Manager cash balances */}
       <div className="table-card" data-testid="balance-table">

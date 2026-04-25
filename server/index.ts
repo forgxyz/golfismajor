@@ -88,16 +88,9 @@ if (process.env.VERCEL !== "1") {
       await setupVite(httpServer, app);
     }
 
-    const port = parseInt(process.env.PORT || "5000", 10);
-    httpServer.listen(
-      {
-        port,
-        host: "0.0.0.0",
-        reusePort: true,
-      },
-      () => {
-        log(`serving on port ${port}`);
-      },
-    );
+    const port = parseInt(process.env.PORT || "5001", 10);
+    httpServer.listen(port, () => {
+      log(`serving on port ${port}`);
+    });
   });
 }

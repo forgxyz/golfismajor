@@ -53,12 +53,18 @@ export async function fetchSchedule() {
     let count = 0;
     for (const t of tourneyMap.values()) {
       const sorted = t.dates.sort();
+      const startDate = sorted[0];
+      // TheSportsDB may return only one round record for an in-progress event.
+      // PGA Tour events always span Thu–Sun (3 days), so ensure endDate >= startDate+3.
+      const rawEnd = sorted[sorted.length - 1];
+      const minEnd = new Date(new Date(startDate).getTime() + 3 * 86400000).toISOString().slice(0, 10);
+      const endDate = rawEnd > minEnd ? rawEnd : minEnd;
       const existing = allEvents.find(e => e.id === t.slug);
       await storage.upsertEvent({
         id: t.slug,
         name: t.name,
-        startDate: sorted[0],
-        endDate: sorted[sorted.length - 1],
+        startDate,
+        endDate,
         venue: t.venue,
         status: t.status || "scheduled",
         round: null,
@@ -163,6 +169,12 @@ export async function fetchLeaderboard(eventId: string) {
       return parseInt(s) || 0;
     };
 
+    const isTeamEvent = competitors[0]?.type === "team";
+
+    // Helper: get display name regardless of individual vs team event
+    const competitorName = (c: any): string =>
+      isTeamEvent ? (c.team?.displayName ?? "") : (c.athlete?.displayName ?? "");
+
     // Sort by score (ascending = better), then assign tied position numbers
     const sorted = [...competitors].sort((a, b) => parseScore(a.score) - parseScore(b.score));
     const tiedPos = new Map<string, number>();
@@ -171,19 +183,21 @@ export async function fetchLeaderboard(eventId: string) {
       if (i > 0 && parseScore(sorted[i].score) !== parseScore(sorted[i - 1].score)) {
         pos = i + 1;
       }
-      tiedPos.set(sorted[i].athlete?.displayName ?? "", pos);
+      tiedPos.set(competitorName(sorted[i]), pos);
     }
 
     for (const c of competitors) {
-      const rawName: string = c.athlete?.displayName ?? "";
-      const resolvedName = await storage.resolveAlias(rawName);
-      const position = tiedPos.get(rawName) ?? c.order ?? 999;
+      const teamName = competitorName(c);
+      const position = tiedPos.get(teamName) ?? c.order ?? 999;
+      const score = c.score ?? "E";
+
+      const resolvedName = isTeamEvent ? teamName : await storage.resolveAlias(teamName);
       await storage.upsertEventResult({
         eventId,
         playerName: resolvedName,
         position: String(position),
         positionNum: position,
-        score: c.score ?? "E",
+        score,
         roundScore: null,
         status: "active",
         projectedPoints: pointsForPosition(cat, position),
@@ -313,7 +327,7 @@ export async function fetchPolymarketOdds(eventId: string, tournamentName: strin
       console.log(`[polymarket] Markets for "${q}": ${usable.length} usable — ${usable.slice(0, 3).map((m: any) => `"${m.question}"`).join(", ")}`);
       if (usable.length === 0) continue;
 
-      const market = active.sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
+      const market = usable.sort((a: any, b: any) => parseFloat(b.volume ?? "0") - parseFloat(a.volume ?? "0"))[0];
       const outcomes: string[] = JSON.parse(market.outcomes);
       const prices: string[] = JSON.parse(market.outcomePrices);
       console.log(`[polymarket] Using market: "${market.question}" ${outcomes.length} outcomes volume=$${parseFloat(market.volume ?? "0").toFixed(0)}`);
@@ -339,39 +353,6 @@ export async function fetchPolymarketOdds(eventId: string, tournamentName: strin
     return { ok: false, error: e.message };
   }
 }
-
-const FEDEX_STANDINGS_2026 = [
-  { name: "Jacob Bridgeman", points: 1452, rank: 1 },
-  { name: "Cameron Young", points: 1323, rank: 2 },
-  { name: "Matt Fitzpatrick", points: 1229, rank: 3 },
-  { name: "Akshay Bhatia", points: 1224, rank: 4 },
-  { name: "Chris Gotterup", points: 1219, rank: 5 },
-  { name: "Collin Morikawa", points: 1182, rank: 6 },
-  { name: "Scottie Scheffler", points: 1131, rank: 7 },
-  { name: "Min Woo Lee", points: 944, rank: 8 },
-  { name: "Jake Knapp", points: 769, rank: 9 },
-  { name: "Xander Schauffele", points: 741, rank: 10 },
-  { name: "Sepp Straka", points: 722, rank: 11 },
-  { name: "Tommy Fleetwood", points: 702, rank: 12 },
-  { name: "Ludvig Åberg", points: 685, rank: 13 },
-  { name: "Justin Rose", points: 601, rank: 14 },
-  { name: "Hideki Matsuyama", points: 650, rank: 15 },
-  { name: "Robert MacIntyre", points: 572, rank: 16 },
-  { name: "Daniel Berger", points: 577, rank: 17 },
-  { name: "Brian Harman", points: 227, rank: 18 },
-  { name: "Justin Thomas", points: 222, rank: 19 },
-  { name: "Corey Conners", points: 220, rank: 20 },
-  { name: "Viktor Hovland", points: 268, rank: 21 },
-  { name: "Maverick McNealy", points: 312, rank: 22 },
-  { name: "Rory McIlroy", points: 476, rank: 23 },
-  { name: "Ben Griffin", points: 168, rank: 24 },
-  { name: "J.J. Spaun", points: 0, rank: 50 },
-  { name: "Shane Lowry", points: 158, rank: 60 },
-  { name: "Jon Rahm", points: 0, rank: 100 },
-  { name: "Sam Burns", points: 38, rank: 100 },
-  { name: "Tyrrell Hatton", points: 0, rank: 100 },
-  { name: "Bryson DeChambeau", points: 0, rank: 100 },
-];
 
 export async function fetchFedexStandings(): Promise<{ ok: boolean; updated?: number; error?: string }> {
   try {
@@ -426,12 +407,3 @@ export async function fetchFedexStandings(): Promise<{ ok: boolean; updated?: nu
   }
 }
 
-export async function loadInitialFedexStandings() {
-  const now = new Date().toISOString();
-  for (const row of FEDEX_STANDINGS_2026) {
-    const existing = await storage.getPlayerTotals(row.name);
-    if (!existing || existing.fedexPoints === 0) {
-      await storage.upsertPlayerTotals({ playerName: row.name, fedexPoints: row.points, fedexRank: row.rank, updatedAt: now });
-    }
-  }
-}

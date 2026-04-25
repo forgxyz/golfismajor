@@ -85,7 +85,7 @@ export interface IStorage {
   clearEventOdds(eventId: string): Promise<void>;
   // Major Payouts
   getAllMajorPayouts(): Promise<MajorPayout[]>;
-  upsertMajorPayout(p: InsertMajorPayout): Promise<void>;
+  upsertMajorPayout(p: InsertMajorPayout & { id?: number }): Promise<void>;
   // Player Aliases
   getAllAliases(): Promise<PlayerAlias[]>;
   upsertAlias(a: InsertPlayerAlias): Promise<void>;
@@ -152,7 +152,17 @@ export const storage: IStorage = {
   async clearEventOdds(eventId) { await db.delete(eventOdds).where(eq(eventOdds.eventId, eventId)).run(); },
 
   async getAllMajorPayouts() { return db.select().from(majorPayouts).all(); },
-  async upsertMajorPayout(p) { await db.insert(majorPayouts).values(p).onConflictDoNothing().run(); },
+  async upsertMajorPayout(p) {
+    const id = (p as any).id;
+    if (id) {
+      await db.update(majorPayouts)
+        .set({ winnerName: p.winnerName, managerId: p.managerId, triggered: p.triggered, payoutAmount: p.payoutAmount })
+        .where(eq(majorPayouts.id, id))
+        .run();
+    } else {
+      await db.insert(majorPayouts).values(p).onConflictDoNothing().run();
+    }
+  },
 
   async getAllAliases() { return db.select().from(playerAliases).all(); },
   async upsertAlias(a) {

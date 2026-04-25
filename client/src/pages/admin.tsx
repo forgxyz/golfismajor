@@ -27,6 +27,7 @@ export default function AdminPage() {
   const [editRule, setEditRule] = useState<{ key: string; value: string } | null>(null);
   const [playerEdit, setPlayerEdit] = useState<{ name: string; points: string; rank: string }>({ name: "", points: "", rank: "" });
   const [scheduleResult, setScheduleResult] = useState<string | null>(null);
+  const [standingsResult, setStandingsResult] = useState<string | null>(null);
 
   // Mutations
   const upsertAlias = useMutation({
@@ -60,6 +61,28 @@ export default function AdminPage() {
       const current = data.name ? ` Current: ${data.name}` : (data.error ? ` No current event: ${data.error}` : "");
       setScheduleResult((msg + current).trim() || "Done");
       toast({ title: "Schedule refreshed" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const autoSettleMajors = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/major-payouts/auto-settle"),
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/major-payouts"] ?? [] });
+      const data = await res.json();
+      const msg = data.settled?.length > 0 ? `Settled: ${data.settled.join(", ")}` : "No new majors to settle.";
+      toast({ title: "Major auto-settle complete", description: msg });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+  const refreshStandings = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/refresh/standings"),
+    onSuccess: async (res) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/player-totals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/standings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/rosters"] });
+      const data = await res.json();
+      setStandingsResult(data.ok ? `Updated ${data.updated} players` : `Error: ${data.error}`);
+      toast({ title: data.ok ? "FedEx standings refreshed" : "Refresh failed", variant: data.ok ? "default" : "destructive" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -103,6 +126,27 @@ export default function AdminPage() {
       {/* ── Players Tab ── */}
       {tab === "players" && (
         <div>
+          <div style={{ display: "flex", gap: "var(--space-3)", marginBottom: "var(--space-4)", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              className="btn btn-primary"
+              onClick={() => refreshStandings.mutate()}
+              disabled={refreshStandings.isPending}
+              data-testid="btn-refresh-standings"
+            >
+              <RefreshCw size={14} className={refreshStandings.isPending ? "animate-spin" : ""} />
+              Refresh FedEx Standings
+            </button>
+            {standingsResult && <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-muted)" }}>{standingsResult}</span>}
+            <button
+              className="btn btn-sm btn-ghost"
+              onClick={() => autoSettleMajors.mutate()}
+              disabled={autoSettleMajors.isPending}
+              data-testid="btn-auto-settle"
+            >
+              <RefreshCw size={14} className={autoSettleMajors.isPending ? "animate-spin" : ""} />
+              Settle Majors
+            </button>
+          </div>
           <div className="table-card">
             <div className="table-card-header">
               <div className="table-card-title">Update Player FedExCup Points</div>

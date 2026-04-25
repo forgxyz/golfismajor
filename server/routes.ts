@@ -2,17 +2,12 @@ import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { computeStandings, pointsForPosition, classifyEvent, isMajor, type EventCategory } from "./scoring";
-import { fetchSchedule, fetchLeaderboard, autoDetectCurrentEvent, detectCurrentEventFromDB, loadInitialFedexStandings, fetchFedexStandings, fetchPolymarketOdds } from "./pga";
+import { fetchLeaderboard, autoDetectCurrentEvent, detectCurrentEventFromDB, fetchPolymarketOdds, fetchFedexStandings } from "./pga";
 import { seedIfNeeded } from "./seed";
 
 export async function registerRoutes(httpServer: Server, app: Express) {
-  // Boot: init DB tables, seed, then load live FedEx standings (fall back to hardcoded snapshot)
+  // Boot: init DB tables and seed. FedEx standings are updated by the weekly cron and manual refresh.
   await seedIfNeeded();
-  const liveStandings = await fetchFedexStandings();
-  if (!liveStandings.ok) {
-    console.log("[boot] Live FedEx standings unavailable, using hardcoded snapshot");
-    await loadInitialFedexStandings();
-  }
 
   // ── Standings ──────────────────────────────────────────────
   app.get("/api/standings", async (_req, res) => {
@@ -195,6 +190,39 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     res.json({ ok: true });
   });
 
+  // ── Auto-settle completed majors (shared logic) ────────────
+  async function autoSettleMajors() {
+    const payouts = await storage.getAllMajorPayouts();
+    const allRosters = await storage.getAllRosters();
+    const allEvents = await storage.getAllEvents();
+    const settled: string[] = [];
+
+    for (const payout of payouts) {
+      if (payout.triggered) continue;
+
+      // Only settle if the event is marked final in the DB
+      const event = allEvents.find(e => e.id === payout.eventId);
+      if (!event || event.status?.toLowerCase() !== "final") continue;
+
+      const results = await storage.getResultsByEvent(payout.eventId);
+      if (results.length === 0) continue;
+      const winner = results
+        .filter(r => r.positionNum != null)
+        .sort((a, b) => (a.positionNum ?? 999) - (b.positionNum ?? 999))[0];
+      if (!winner) continue;
+      const rosterEntry = allRosters.find(r => r.playerName.toLowerCase() === winner.playerName.toLowerCase());
+      await storage.upsertMajorPayout({ ...payout, winnerName: winner.playerName, managerId: rosterEntry?.managerId ?? null, triggered: true });
+      settled.push(`${payout.eventName} → ${winner.playerName}`);
+    }
+    return settled;
+  }
+
+  // Manual trigger for Admin
+  app.post("/api/major-payouts/auto-settle", async (_req, res) => {
+    const settled = await autoSettleMajors();
+    res.json({ ok: true, settled });
+  });
+
   // ── Major payout trigger ───────────────────────────────────
   app.post("/api/major-payouts/:id/trigger", async (req, res) => {
     const { winnerName } = req.body;
@@ -257,6 +285,7 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       return res.json({ ok: false, error: "No current event set" });
     }
     const result = await fetchLeaderboard(event.id);
+    if (result.ok && event.isMajor) await autoSettleMajors();
     console.log("[cron] Leaderboard refresh:", result);
     res.json(result);
   });
