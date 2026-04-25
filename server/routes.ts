@@ -285,7 +285,14 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       return res.json({ ok: false, error: "No current event set" });
     }
     const result = await fetchLeaderboard(event.id);
-    if (result.ok && event.isMajor) await autoSettleMajors();
+    // Auto-settle if this is a major and ESPN reports it as final
+    if (result.ok && event.isMajor) {
+      const fresh = await storage.getCurrentEvent();
+      if (fresh?.status?.toLowerCase() === "final") {
+        const settled = await autoSettleMajors();
+        if (settled.length) console.log("[cron] Auto-settled majors:", settled);
+      }
+    }
     console.log("[cron] Leaderboard refresh:", result);
     res.json(result);
   });
