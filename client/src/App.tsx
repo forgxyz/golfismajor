@@ -8,6 +8,7 @@ import MajorsPage from "@/pages/majors";
 import AdminPage from "@/pages/admin";
 import { Flag, Trophy, Star, Sun, Moon } from "lucide-react";
 import { useState, useEffect } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 function NavLink({ href, icon: Icon, label }: { href: string; icon: any; label: string }) {
   const [location] = useLocation();
@@ -88,6 +89,7 @@ export default function App() {
         <AppShell />
       </Router>
       <Toaster />
+      <SpeedInsights />
     </QueryClientProvider>
   );
 }
